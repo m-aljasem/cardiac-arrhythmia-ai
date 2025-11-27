@@ -42,7 +42,7 @@ This project implements a **sequence model** for ECG beat classification using:
 - Bidirectional LSTM for temporal context  
 - Multi‑head attention for focusing on critical time steps  
 
-It targets the **MIT‑BIH ECG heartbeat dataset** (via Kaggle) and provides:
+It uses the **MIT‑BIH ECG heartbeat dataset** and provides:
 
 - A PyTorch training script
 - A Streamlit UI for quick inference
