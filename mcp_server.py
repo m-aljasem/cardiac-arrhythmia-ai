@@ -11,6 +11,10 @@ from pathlib import Path
 import sys
 from typing import Any, Dict, List, Optional
 import numpy as np
+import pandas as pd
+import torch
+import io
+import base64
 
 # MCP SDK
 try:
@@ -23,6 +27,7 @@ except ImportError:
 
 # Add src to path
 sys.path.insert(0, str(Path(__file__).parent / "src"))
+from src.model import ECGAttentionModel
 
 app = Server("ecg-mcp-server")
 
@@ -32,30 +37,21 @@ MODEL_PATH = MODELS_DIR / "ecg_model.pth"
 
 # Global model
 model = None
+CLASSES = ['Normal', 'Supraventricular', 'Ventricular', 'Fusion', 'Unknown']
+NUM_CLASSES = len(CLASSES)
+EXPECTED_FEATURES = (187,)
 
 def load_model():
-    """Load model based on type."""
+    """Load PyTorch model."""
     global model
     try:
-        if not MODEL_PATH.exists():
-            print(f"⚠️  Model not found at {MODEL_PATH}")
-            return
-        
-        if "pytorch" == "sklearn":
-            import pickle
-            with open(MODEL_PATH, 'rb') as f:
-                model = pickle.load(f)
-        elif "pytorch" == "tensorflow":
-            import tensorflow as tf
-            model = tf.keras.models.load_model(str(MODEL_PATH))
-        elif "pytorch" == "pytorch":
-            import torch
-            from src.model import ECGAttentionModel
-            model = ECGAttentionModel(num_classes=5)
+        if MODEL_PATH.exists():
+            model = ECGAttentionModel(num_classes=NUM_CLASSES)
             model.load_state_dict(torch.load(MODEL_PATH, map_location=torch.device('cpu')))
             model.eval()
-        
-        print(f"✓ Model loaded from {MODEL_PATH}")
+            print(f"✓ Model loaded from {MODEL_PATH}")
+        else:
+            print(f"⚠️  Model not found at {MODEL_PATH}")
     except Exception as e:
         print(f"Error loading model: {e}")
 
@@ -65,13 +61,13 @@ async def list_tools() -> List[Tool]:
     return [
         Tool(
             name="predict",
-            description="Make a prediction using the ECG Arrhythmia Detection model",
+            description="Make a prediction using the ECG Arrhythmia Detection model. Input should be a file path to a CSV file with ECG signal data ((187,) features) or base64 encoded CSV.",
             inputSchema={
                 "type": "object",
                 "properties": {
                     "input": {
                         "type": "string",
-                        "description": "Input data (JSON string or file path)"
+                        "description": "File path to CSV file or base64 encoded CSV data"
                     }
                 },
                 "required": ["input"]
@@ -120,9 +116,10 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
             )]
         
         info = {
-            "model_type": "pytorch",
+            "model_type": "PyTorch",
             "model_path": str(MODEL_PATH),
-            "classes": ['Normal', 'Supraventricular', 'Ventricular', 'Fusion', 'Unknown'],
+            "classes": CLASSES,
+            "expected_features": EXPECTED_FEATURES,
             "description": "ECG Arrhythmia Detection"
         }
         
@@ -143,23 +140,59 @@ async def call_tool(name: str, arguments: Dict[str, Any]) -> List[TextContent]:
         try:
             input_data = arguments.get("input", "")
             
-            # Parse input (could be JSON string or file path)
+            # Handle file path or base64 encoded CSV
             if Path(input_data).exists():
-                with open(input_data, 'r') as f:
-                    data = json.load(f)
+                df = pd.read_csv(input_data)
+            elif input_data.startswith("data:text/csv"):
+                # Base64 encoded CSV
+                header, encoded = input_data.split(",", 1)
+                csv_data = base64.b64decode(encoded)
+                df = pd.read_csv(io.BytesIO(csv_data))
             else:
-                data = json.loads(input_data)
+                # Try as base64 string
+                try:
+                    csv_data = base64.b64decode(input_data)
+                    df = pd.read_csv(io.BytesIO(csv_data))
+                except:
+                    return [TextContent(
+                        type="text",
+                        text=json.dumps({
+                            "error": "Invalid input. Provide file path to CSV or base64 encoded CSV."
+                        }, indent=2)
+                    )]
             
-            # Make prediction based on model type
-            if "pytorch" == "sklearn":
-                # Handle sklearn prediction
-                result = {"prediction": "sklearn prediction", "data": data}
-            elif "pytorch" == "tensorflow":
-                # Handle TensorFlow prediction
-                result = {"prediction": "tensorflow prediction", "data": data}
-            elif "pytorch" == "pytorch":
-                # Handle PyTorch prediction
-                result = {"prediction": "pytorch prediction", "data": data}
+            # Extract signal (exclude last column if it's label)
+            signal = df.iloc[:, :-1].values if df.shape[1] > EXPECTED_FEATURES else df.values
+            
+            # Ensure correct shape
+            if signal.shape[1] != EXPECTED_FEATURES:
+                return [TextContent(
+                    type="text",
+                    text=json.dumps({
+                        "error": f"Expected {EXPECTED_FEATURES} features, got {signal.shape[1]}"
+                    }, indent=2)
+                )]
+            
+            # Convert to tensor
+            signal_tensor = torch.FloatTensor(signal).unsqueeze(1)  # Add channel dim
+            
+            # Predict
+            with torch.no_grad():
+                pred = model(signal_tensor)
+                pred_class = torch.argmax(pred, dim=1)[0].item()
+                confidence = torch.softmax(pred, dim=1)[pred_class].item()
+            
+            probabilities = {
+                CLASSES[i]: float(torch.softmax(pred, dim=1)[0][i].item())
+                for i in range(NUM_CLASSES)
+            }
+            
+            result = {
+                "prediction": CLASSES[pred_class],
+                "class_index": pred_class,
+                "confidence": float(confidence),
+                "probabilities": probabilities
+            }
             
             return [TextContent(
                 type="text",
