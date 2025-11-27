@@ -87,7 +87,7 @@ pip install -r requirements-dev.txt
 ### 1️⃣ Train the Model
 
 ```bash
-cd ecg
+cd cardiac-arrhythmia-ai
 python src/train.py
 ```
 
@@ -104,7 +104,7 @@ models/ecg_model.pth
 ### 2️⃣ Run the Streamlit App
 
 ```bash
-cd ecg
+cd cardiac-arrhythmia-ai
 streamlit run app.py
 ```
 
@@ -149,7 +149,7 @@ with torch.no_grad():
 ## 🗂 Project Structure
 
 ```text
-ecg/
+cardiac-arrhythmia-ai/
 ├── app.py                    # Streamlit app
 ├── config/
 ├── data/                     # ECG CSV files (train/test)

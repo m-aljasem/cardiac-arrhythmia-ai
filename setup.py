@@ -4,14 +4,14 @@ with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
-    name="ecg",
+    name="cardiac-arrhythmia-ai",
     version="1.0.0",
     author="Mohamad AlJasem, MD MPH MSc",
     author_email="mohamad@aljasem.eu.org",
     description="ECG Arrhythmia Classification using CNN-LSTM with Attention",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/m-aljasem/ecg",
+    url="https://github.com/m-aljasem/cardiac-arrhythmia-ai",
     packages=find_packages(),
     classifiers=[
         "Development Status :: 4 - Beta",

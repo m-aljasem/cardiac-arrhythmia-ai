@@ -11,8 +11,8 @@ from src.model import ECGAttentionModel
 LABELS = ["Normal", "Artial Premature", "Premature ventricular contraction",
           "Fusion of ventricular and normal", "Fusion of paced and normal"]
 
-st.set_page_config(page_title="ECG Classification", page_icon="❤️")
-st.title("❤️ ECG Classification with Attention")
+st.set_page_config(page_title="Cardiac Arrhythmia AI", page_icon="❤️")
+st.title("Cardiac Arrhythmia AI")
 
 MODELS_DIR = Path("models")
 WEIGHTS_PATH = MODELS_DIR / "ecg_model.pth"
